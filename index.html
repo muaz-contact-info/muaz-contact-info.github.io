@@ -52,7 +52,8 @@
   :root[lang="ar"], :root[lang="ur"] { --body: "Noto Sans Arabic", "Manrope", sans-serif; --display: "Noto Sans Arabic", sans-serif; }
 
   * { box-sizing: border-box; margin: 0; min-width: 0; -webkit-tap-highlight-color: transparent; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { -webkit-text-size-adjust: 100%; scrollbar-width: none; -ms-overflow-style: none; }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; width: 0; height: 0; }
   body {
     min-height: 100vh; min-height: 100dvh;
     background: var(--bg);
@@ -160,14 +161,18 @@
   .mark i:nth-of-type(3) { animation-delay: 3.34s; }
   @keyframes wave { from { transform: scale(1); opacity: .6; } to { transform: scale(2.2); opacity: 0; } }
 
-  .names {
-    direction: ltr;
-    display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline;
-    gap: 2px 12px; padding: 0 4px;
+  .names { direction: ltr; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 4px; }
+  .n.main { font: 800 clamp(24px, 6.4vw, 30px)/1.25 "Bricolage Grotesque", "Manrope", sans-serif; letter-spacing: -.01em; }
+  .rot { display: grid; justify-items: center; }
+  .aka {
+    grid-area: 1 / 1; white-space: nowrap;
+    font: 600 clamp(13px, 3.6vw, 15.5px)/1.5 "Manrope", sans-serif; color: var(--muted);
+    opacity: 0; transform: translateY(10px); filter: blur(6px);
+    transition: opacity .7s cubic-bezier(.2,.8,.2,1), transform .7s cubic-bezier(.2,.8,.2,1), filter .7s ease;
   }
-  .n.main { font: 800 clamp(22px, 5.8vw, 28px)/1.25 "Bricolage Grotesque", "Manrope", sans-serif; letter-spacing: -.01em; }
-  .n.aka { font: 600 clamp(13px, 3.5vw, 15px)/1.4 "Manrope", sans-serif; color: var(--muted); }
-  .n em { display: inline-block; font-style: normal; font-weight: 500; opacity: .75; margin-right: .3em; }
+  .aka em { font-style: normal; font-weight: 500; opacity: .75; margin-right: .3em; }
+  .aka.on { opacity: 1; transform: none; filter: none; }
+  .aka.out { opacity: 0; transform: translateY(-10px); filter: blur(6px); }
   .w, .ch { display: inline-block; }
   .w { white-space: nowrap; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -263,6 +268,7 @@
     .js:not(.go) .card, .js:not(.go) .orb, .js:not(.go) [data-r], .js:not(.go) .ch { opacity: 1; }
     .card, .orb, [data-r], .ch, .mark i, .ripple { animation: none !important; }
     .thumb, .btn, .row, .pill, .round { transition: none; }
+    .aka { transform: none !important; filter: none !important; transition: opacity .3s ease !important; }
   }
   @media (max-height: 520px) and (orientation: landscape) { .identity { padding-top: 14px; } .mark { margin-bottom: 30px; } }
 </style>
@@ -285,11 +291,13 @@
           <i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i>
           <div class="core" data-r="350">M<img src="https://files.catbox.moe/kxnmds.jpg" alt="Habibullah Muaz" decoding="async" referrerpolicy="no-referrer"></div>
         </div>
-        <p class="names">
-          <span class="n main"><span class="t" data-start="750">Habibullah Muaz</span></span>
-          <span class="n aka"><em data-r="1250">aka</em> <span class="t" data-start="1350">Ahsan Habib Muaz</span></span>
-          <span class="n aka"><em data-r="1900">aka</em> <span class="t" data-start="2000">MD Habibullah Muyaz</span></span>
-        </p>
+        <div class="names">
+          <p class="n main"><span class="t" data-start="750">Habibullah Muaz</span></p>
+          <div class="rot" data-r="1250">
+            <span class="aka on"><em>aka</em> Ahsan Habib Muaz</span>
+            <span class="aka" aria-hidden="true"><em>aka</em> MD Habibullah Muyaz</span>
+          </div>
+        </div>
       </section>
 
       <div class="grid" id="grid">
@@ -460,16 +468,46 @@
     setTimeout(function () { root.classList.remove("theming"); }, 600);
   });
 
-  /* ---------- read aloud ---------- */
+  /* ---------- read aloud (prefers a male voice) ---------- */
+  var MALE = /\bmale\b|david|\bmark\b|guy|daniel|\balex\b|aaron|\bfred\b|ryan|christopher|eric|george|james|rishi|ravi|prabhat|madhur|hemant|majed|maged|hamed|naayf|shakir|tarik|bashkar|pradeep|asad|salman|jawed|gordon|oliver|thomas|arthur|reed|eddy/i;
+  var FEMALE = /female|woman|zira|\baria\b|jenny|samantha|victoria|karen|susan|hazel|moira|tessa|fiona|heera|neerja|swara|laila|salma|hoda|zariah|zeina|amira|noora|kalpana|tanishaa|nabanita|uzma|\bgul\b|\bsara\b|lekha|veena|google us english/i;
+  function normLang(l) { return (l || "").replace("_", "-").toLowerCase(); }
+  function voiceScore(v) {
+    var n = v.name || "", sc = 0;
+    if (/female|woman/i.test(n)) sc -= 20; else if (FEMALE.test(n)) sc -= 8;
+    if (MALE.test(n)) sc += 10;
+    if (/natural|neural|online|enhanced|premium/i.test(n)) sc += 3;
+    return sc;
+  }
+  function pickVoice(tag) {
+    var vs = speechSynthesis.getVoices() || [];
+    var base = tag.slice(0, 2).toLowerCase(), want = tag.toLowerCase();
+    var pool = vs.filter(function (v) { return normLang(v.lang).indexOf(base) === 0; });
+    if (!pool.length) return null;
+    function sc(v) { return voiceScore(v) + (normLang(v.lang) === want ? 1 : 0); }
+    pool.sort(function (a, b) { return sc(b) - sc(a); });
+    return pool[0];
+  }
+  function speak() {
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(T[current].title + ". " + T[current].lead);
+    var v = pickVoice(LANGS[current].voice);
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = LANGS[current].voice; }
+    u.pitch = (v && voiceScore(v) >= 10) ? 1 : 0.75;
+    u.rate = 0.95;
+    speechSynthesis.speak(u);
+  }
   var readBtn = document.getElementById("read");
   if (!window.speechSynthesis) {
     readBtn.hidden = true;
   } else {
+    speechSynthesis.getVoices();
     readBtn.addEventListener("click", function () {
-      speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance(T[current].title + ". " + T[current].lead);
-      u.lang = LANGS[current].voice;
-      speechSynthesis.speak(u);
+      if (speechSynthesis.getVoices().length) { speak(); return; }
+      var done = false;
+      function go() { if (done) return; done = true; speak(); }
+      speechSynthesis.addEventListener("voiceschanged", go, { once: true });
+      setTimeout(go, 500);
     });
   }
 
@@ -523,6 +561,22 @@
   window.addEventListener("load", function () {
     var ready = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
     ready.then(function () { clearTimeout(failsafe); start(); });
+  });
+
+  /* ---------- aka names: one at a time, fade in and out ---------- */
+  safe(function () {
+    var items = document.querySelectorAll(".rot .aka");
+    if (items.length < 2) return;
+    var i = 0;
+    setTimeout(function () {
+      setInterval(function () {
+        var a = items[i], b = items[(i + 1) % items.length];
+        a.classList.remove("on"); a.classList.add("out"); a.setAttribute("aria-hidden", "true");
+        b.classList.remove("out"); b.classList.add("on"); b.removeAttribute("aria-hidden");
+        setTimeout(function () { a.classList.remove("out"); }, 900);
+        i = (i + 1) % items.length;
+      }, 3200);
+    }, 1300);
   });
 
   /* ---------- pointer glow, orb parallax, tap ripple ---------- */
